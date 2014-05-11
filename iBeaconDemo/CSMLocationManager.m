@@ -14,7 +14,7 @@
 
 #define kLocationUpdateNotification @"updateNotification"
 
-@interface CSMLocationManager () <CBPeripheralManagerDelegate>
+@interface CSMLocationManager () <CBPeripheralManagerDelegate, NSURLConnectionDelegate>
 
 @property (nonatomic, strong) CLLocationManager     *locationManager;
 @property (nonatomic, strong) CBPeripheralManager   *peripheralManager;
@@ -25,6 +25,7 @@
 
 @end
 
+#define kBaseUrl @"http://192.168.0.111:15000"
 static CSMLocationManager *_sharedInstance = nil;
 
 @implementation CSMLocationManager
@@ -174,34 +175,38 @@ static CSMLocationManager *_sharedInstance = nil;
 }
 
 - (void)locationManager:(CLLocationManager *)manager didDetermineState:(CLRegionState)state forRegion:(CLRegion *)region {
-   
+    NSLog(@"Beacon found %@", region.identifier);
     // handle notifyEntryStateOnDisplay
     // notify user they have entered the region, if you haven't already
     if (manager == self.locationManager &&
         [region.identifier isEqualToString:kUniqueRegionIdentifier] &&
         state == CLRegionStateInside &&
         !self.didShowEntranceNotifier) {
-        
+        [self sendHttpMessage];
         // start beacon ranging
         [self startBeaconRanging];
     }
 }
 
 - (void)locationManager:(CLLocationManager *)manager didEnterRegion:(CLRegion *)region {
-
+    NSLog(@"Entering region %@", region.identifier);
     // handle notifyOnEntry
     // notify user they have entered the region, if you haven't already
     if (manager == self.locationManager &&
         [region.identifier isEqualToString:kUniqueRegionIdentifier] &&
         !self.didShowEntranceNotifier) {
-        
         // start beacon ranging
+        [self sendHttpMessage];
         [self startBeaconRanging];
+        if ([region isKindOfClass:[CLBeaconRegion class]]) {
+            CLBeaconRegion* beaconRegion = (CLBeaconRegion*)region;
+            [self scheduleNotification:@"Welcome here" major:beaconRegion.major minor:beaconRegion.minor];
+        }
     }
 }
 
 - (void)locationManager:(CLLocationManager *)manager didExitRegion:(CLRegion *)region {
-    
+    NSLog(@"exiting region");
     // optionally notify user they have left the region
     if (!self.didShowExitNotifier) {
         
@@ -209,13 +214,11 @@ static CSMLocationManager *_sharedInstance = nil;
         
         // fire notification with region update
         [self fireUpdateNotificationForStatus:@"Thanks for visiting.  You have now left the target region."];
+        [self sendByeHttpMessage];
     }
     
     // reset entrance notifier
     self.didShowEntranceNotifier = NO;
-    
-    // stop beacon ranging
-    [manager stopRangingBeaconsInRegion:[CSMBeaconRegion targetRegion]];
 }
 
 - (void)locationManager:(CLLocationManager *)manager didRangeBeacons:(NSArray *)beacons inRegion:(CLBeaconRegion *)region {
@@ -229,11 +232,13 @@ static CSMLocationManager *_sharedInstance = nil;
              or only once depending on the use case.  Optionally use major, minor values here to provide beacon-specific content
              */
             [self fireUpdateNotificationForStatus:@"You are in the immediate vicinity of the Beacon."];
+            [self sendHttpMessage];
             
         } else if (closestBeacon.proximity == CLProximityNear) {
             // detect other nearby beacons
             // optionally hide previously displayed proximity based information
             [self fireUpdateNotificationForStatus:@"There are Beacons nearby."];
+            [self sendHttpMessage];
         }
     } else {
         // no beacons in range - signal may have been lost
@@ -286,6 +291,55 @@ static CSMLocationManager *_sharedInstance = nil;
 - (void)alertView:(UIAlertView *)alertView didDismissWithButtonIndex:(NSInteger)buttonIndex {
     // exit application if user declined Current Location permissions
     exit(0);
+}
+
+#pragma mark - NSUrlConnectionDelegate
+
+- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response{
+    NSLog(@"Response %@", response.URL);
+}
+
+- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error{
+    NSLog(@"Failed with error %@", error.localizedDescription);
+}
+
+#pragma mark - http messages
+-(void)sendByeHttpMessage{
+    NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@",kBaseUrl, @"/bye/MapaX"]];
+    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:url] delegate:self];
+}
+
+-(void)sendHttpMessage{
+    NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@",kBaseUrl, @"/hello/MapaX"]];
+    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:url] delegate:self];
+}
+
+#pragma mark - local notification
+
+- (void)scheduleNotification:(NSString*)text major:(NSNumber*)major minor:(NSNumber*)minor {
+    
+    if ([[UIApplication sharedApplication] applicationState] == UIApplicationStateActive) {
+        UIAlertView* alert = [[UIAlertView alloc] initWithTitle:@"Welcome" message:@"Welcome here" delegate:nil cancelButtonTitle:@"OK" otherButtonTitles: nil];
+        [alert show];
+        return;
+    }
+    
+    UILocalNotification *localNotif = [[UILocalNotification alloc] init];
+    if (localNotif == nil){
+        return;
+    }
+    
+    localNotif.fireDate = [NSDate dateWithTimeIntervalSinceNow:10];
+    localNotif.timeZone = [NSTimeZone defaultTimeZone];
+    
+    localNotif.alertBody = text;
+    localNotif.alertAction = NSLocalizedString(@"View Details", nil);
+    localNotif.soundName = UILocalNotificationDefaultSoundName;
+    localNotif.applicationIconBadgeNumber = 1;
+    NSDictionary *infoDict = [NSDictionary dictionaryWithObjectsAndKeys:@"major", major, @"minor", minor,nil];
+    localNotif.userInfo = infoDict;
+    
+    [[UIApplication sharedApplication] presentLocalNotificationNow:localNotif];
 }
 
 @end

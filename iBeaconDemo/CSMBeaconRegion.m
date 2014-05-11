@@ -29,9 +29,9 @@ static CSMBeaconRegion *_sharedInstance = nil;
                                               identifier:kUniqueRegionIdentifier];
     
     if (self) {
-        self.notifyEntryStateOnDisplay = NO;     // only notify user if app is active
-        self.notifyOnEntry = NO;                 // don't notify user on region entrance
-        self.notifyOnExit = YES;                 // notify user on region exit
+        self.notifyEntryStateOnDisplay = YES;
+        self.notifyOnEntry = YES;
+        self.notifyOnExit = YES;
     }
     return self;
 }

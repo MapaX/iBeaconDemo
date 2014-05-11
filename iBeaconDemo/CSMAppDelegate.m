@@ -21,7 +21,7 @@
 - (NSUUID*)myUUID {
     if (!_myUUID) {
         // generate unique identifier
-        _myUUID = [[NSUUID alloc] initWithUUIDString:@"10D39AE7-020E-4467-9CB2-DD36366F899D"];
+        _myUUID = [[NSUUID alloc] initWithUUIDString:@"4F31B1A0-A4DE-4DA0-8B96-CFA23E8D78E8"];
     }
     return _myUUID;
 }
